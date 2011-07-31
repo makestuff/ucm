@@ -7,18 +7,18 @@ mkdir ${LIB}-${DATE}
 # Linux binaries
 mkdir -p ${LIB}-${DATE}/linux/rel
 cp -rp linux/rel/*.so ${LIB}-${DATE}/linux/rel/
-cp -rp linux/rel/ucm ${LIB}-${DATE}/linux/rel/
+cp -rp linux/rel/${LIB} ${LIB}-${DATE}/linux/rel/
 mkdir -p ${LIB}-${DATE}/linux/dbg
 cp -rp linux/dbg/*.so ${LIB}-${DATE}/linux/dbg/
-cp -rp linux/dbg/ucm ${LIB}-${DATE}/linux/dbg/
+cp -rp linux/dbg/${LIB} ${LIB}-${DATE}/linux/dbg/
 
 # MacOS binaries
 mkdir -p ${LIB}-${DATE}/darwin/rel
 cp -rp darwin/rel/*.dylib ${LIB}-${DATE}/darwin/rel/
-cp -rp darwin/rel/ucm ${LIB}-${DATE}/darwin/rel/
+cp -rp darwin/rel/${LIB} ${LIB}-${DATE}/darwin/rel/
 mkdir -p ${LIB}-${DATE}/darwin/dbg
 cp -rp darwin/dbg/*.dylib ${LIB}-${DATE}/darwin/dbg/
-cp -rp darwin/dbg/ucm ${LIB}-${DATE}/darwin/dbg/
+cp -rp darwin/dbg/${LIB} ${LIB}-${DATE}/darwin/dbg/
 
 # Windows binaries
 mkdir -p ${LIB}-${DATE}/win32/rel
