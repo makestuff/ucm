@@ -16,7 +16,6 @@
  */
 #include <liberror.h>
 #include <libusbwrap.h>
-#include <usb.h>
 #include <argtable2.h>
 #ifdef WIN32
 #include <fcntl.h>
@@ -45,10 +44,10 @@ int main(int argc, char* argv[]) {
 
 	uint8 bRequest;
 	uint16 wValue, wIndex, wLength;
-	char buffer[BUFFER_SIZE];
+	uint8 buffer[BUFFER_SIZE];
 	bool isOut = false;
 	FILE *outFile = NULL;
-	struct usb_dev_handle *deviceHandle = NULL;
+	struct USBDevice *deviceHandle = NULL;
 
 	if ( arg_nullcheck(argTable) != 0 ) {
 		printf("%s: insufficient memory\n", progName);
@@ -139,39 +138,43 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	usbInitialise();
-	returnCode = usbOpenDeviceVP(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error);
+	returnCode = usbInitialise(0, &error);
 	if ( returnCode ) {
 		fprintf(stderr, "%s\n", error);
-		errFree(error);
 		FAIL(9);
 	}
-	returnCode = usb_control_msg(
-		deviceHandle,
-		((isOut?USB_ENDPOINT_OUT:USB_ENDPOINT_IN) | USB_TYPE_VENDOR | USB_RECIP_DEVICE),
-		bRequest, wValue, wIndex, buffer, wLength, 5000
-	);
+
+	returnCode = usbOpenDevice(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error);
+	if ( returnCode ) {
+		fprintf(stderr, "%s\n", error);
+		FAIL(10);
+	}
 	if ( isOut ) {
-		if ( returnCode != wLength ) {
-			fprintf(stderr, "Expected to write 0x%04X bytes but actually wrote 0x%04X: %s\n", wLength, returnCode, usb_strerror());
-			FAIL(10);
+		returnCode = usbControlWrite(
+			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, 5000, &error);
+		if ( returnCode ) {
+			fprintf(stderr, "%s\n", error);
+			FAIL(11);
 		}
 	} else {
-		if ( returnCode < 0 ) {
-			fprintf(stderr, "usb_control_msg() failed returnCode %d: %s\n", returnCode, usb_strerror());
-			FAIL(11);
-		} else if ( returnCode > 0 ) {
-			fwrite(buffer, 1, returnCode, outFile);
+		returnCode = usbControlRead(
+			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, 5000, &error);
+		if ( returnCode ) {
+			fprintf(stderr, "%s\n", error);
+			FAIL(12);
 		}
+		fwrite(buffer, 1, wLength, outFile);
 	}
 
 cleanup:
 	if ( deviceHandle ) {
-		usb_release_interface(deviceHandle, 0);
-		usb_close(deviceHandle);
+		usbCloseDevice(deviceHandle, 0);
 	}
 	if ( outFile != NULL && outFile != stdout ) {
 		fclose(outFile);
+	}
+	if ( error ) {
+		usbFreeError(error);
 	}
 	arg_freetable(argTable, sizeof(argTable)/sizeof(argTable[0]));
 	return returnCode;
