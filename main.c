@@ -24,9 +24,14 @@
 
 #define BUFFER_SIZE 4096
 
-int main(int argc, char* argv[]) {
+#define CHECK(condition, retCode) \
+	if ( condition ) { \
+		FAIL(retCode); \
+	}
 
+int main(int argc, char* argv[]) {
 	struct arg_str *vpOpt = arg_str1("v", "vidpid", "<VID:PID>", " vendor ID and product ID (e.g 04B4:8613)");
+	struct arg_uint *toOpt = arg_uint0("t", "timeout", "<millis>", " timeout in milliseconds");
 	struct arg_lit *inOpt  = arg_lit0("i", "in", "             this is an IN message (device->host)");
 	struct arg_lit *outOpt  = arg_lit0("o", "out", "             this is an OUT message (host->device)");
 	struct arg_file *fileOpt = arg_file0("f", "file", "<fileName>", "  file to read from or write to (default stdin/stdout)");
@@ -36,10 +41,11 @@ int main(int argc, char* argv[]) {
 	struct arg_uint *idxOpt = arg_uint1(NULL, NULL, "<wIndex>", "             the wIndex word");
 	struct arg_uint *lenOpt = arg_uint1(NULL, NULL, "<wLength>", "             the wLength word");
 	struct arg_end *endOpt   = arg_end(20);
-	void *argTable[] = {vpOpt, inOpt, outOpt, fileOpt, helpOpt, reqOpt, valOpt, idxOpt, lenOpt, endOpt};
+	void *argTable[] = {vpOpt, toOpt, inOpt, outOpt, fileOpt, helpOpt, reqOpt, valOpt, idxOpt, lenOpt, endOpt};
 	const char *progName = "ucm";
-	int returnCode = 0;
+	int uStatus, returnCode = 0;
 	int numErrors;
+	uint32 timeout = 5000;
 	const char *error = NULL;
 
 	uint8 bRequest;
@@ -70,6 +76,10 @@ int main(int argc, char* argv[]) {
 		FAIL(2);
 	}
 
+	if ( toOpt->count ) {
+		timeout = toOpt->ival[0];
+	}
+
 	if ( inOpt->count && outOpt->count ) {
 		fprintf(stderr, "You cannot supply both -i and -o\n");
 		FAIL(3);
@@ -93,10 +103,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	if ( isOut ) {
+		size_t bytesRead;
 		if ( fileOpt->count ) {
 			// Read OUT data from specified file
 			//
-			size_t bytesRead;
 			FILE *inFile = fopen(fileOpt->filename[0], "rb");
 			if ( inFile == NULL ) {
 				fprintf(stderr, "Cannot open file %s\n", argv[6]);
@@ -113,7 +123,6 @@ int main(int argc, char* argv[]) {
 		} else {
 			// Read OUT data from stdin
 			//
-			uint32 bytesRead;
 			#ifdef WIN32
 				_setmode(_fileno(stdin), O_BINARY);
 			#endif
@@ -138,32 +147,31 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	returnCode = usbInitialise(0, &error);
-	if ( returnCode ) {
-		fprintf(stderr, "%s\n", error);
-		FAIL(9);
-	}
+	uStatus = usbInitialise(0, &error);
+	CHECK(uStatus, 9);
 
-	returnCode = usbOpenDevice(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error);
-	if ( returnCode ) {
-		fprintf(stderr, "%s\n", error);
-		FAIL(10);
-	}
+	uStatus = usbOpenDevice(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error);
+	CHECK(uStatus, 10);
+
 	if ( isOut ) {
-		returnCode = usbControlWrite(
-			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, 5000, &error);
-		if ( returnCode ) {
-			fprintf(stderr, "%s\n", error);
-			FAIL(11);
-		}
+		uStatus = usbControlWrite(
+			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error
+		);
+		CHECK(uStatus, 11);
 	} else {
-		returnCode = usbControlRead(
-			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, 5000, &error);
-		if ( returnCode ) {
-			fprintf(stderr, "%s\n", error);
-			FAIL(12);
+		size_t bytesWritten;
+		uStatus = usbControlRead(
+			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error);
+		CHECK(uStatus, 12);
+		bytesWritten = fwrite(buffer, 1, wLength, outFile);
+		if ( bytesWritten != wLength ) {
+			if ( outFile == stdout ) {
+				fprintf(stderr, "Unable to write %d bytes to stdout\n", wLength);
+			} else {
+				fprintf(stderr, "Unable to write %d bytes to \"%s\"\n", wLength, fileOpt->filename[0]);
+			}
+			FAIL(13);
 		}
-		fwrite(buffer, 1, wLength, outFile);
 	}
 
 cleanup:
@@ -174,6 +182,7 @@ cleanup:
 		fclose(outFile);
 	}
 	if ( error ) {
+		fprintf(stderr, "%s\n", error);
 		usbFreeError(error);
 	}
 	arg_freetable(argTable, sizeof(argTable)/sizeof(argTable[0]));
