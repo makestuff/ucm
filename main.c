@@ -24,11 +24,6 @@
 
 #define BUFFER_SIZE 4096
 
-#define CHECK(condition, retCode) \
-	if ( condition ) { \
-		FAIL(retCode); \
-	}
-
 int main(int argc, char* argv[]) {
 	struct arg_str *vpOpt = arg_str1("v", "vidpid", "<VID:PID>", " vendor ID and product ID (e.g 04B4:8613)");
 	struct arg_uint *toOpt = arg_uint0("t", "timeout", "<millis>", " timeout in milliseconds");
@@ -43,11 +38,10 @@ int main(int argc, char* argv[]) {
 	struct arg_end *endOpt   = arg_end(20);
 	void *argTable[] = {vpOpt, toOpt, inOpt, outOpt, fileOpt, helpOpt, reqOpt, valOpt, idxOpt, lenOpt, endOpt};
 	const char *progName = "ucm";
-	int uStatus, returnCode = 0;
+	int retVal = 0;
 	int numErrors;
 	uint32 timeout = 5000;
 	const char *error = NULL;
-
 	uint8 bRequest;
 	uint16 wValue, wIndex, wLength;
 	uint8 buffer[BUFFER_SIZE];
@@ -57,23 +51,22 @@ int main(int argc, char* argv[]) {
 
 	if ( arg_nullcheck(argTable) != 0 ) {
 		printf("%s: insufficient memory\n", progName);
-		FAIL(1);
+		FAIL(1, cleanup);
 	}
 
 	numErrors = arg_parse(argc, argv, argTable);
-
 	if ( helpOpt->count > 0 ) {
 		printf("USB Control Message Tool Copyright (C) 2009-2011 Chris McClelland\n\nUsage: %s", progName);
 		arg_print_syntax(stdout, argTable, "\n");
 		printf("\nInteract with a USB device's control endpoint.\n\n");
 		arg_print_glossary(stdout, argTable,"  %-10s %s\n");
-		FAIL(0);
+		FAIL(0, cleanup);
 	}
 
 	if ( numErrors > 0 ) {
 		arg_print_errors(stdout, endOpt, progName);
 		printf("Try '%s --help' for more information.\n", progName);
-		FAIL(2);
+		FAIL(2, cleanup);
 	}
 
 	if ( toOpt->count ) {
@@ -82,24 +75,23 @@ int main(int argc, char* argv[]) {
 
 	if ( inOpt->count && outOpt->count ) {
 		fprintf(stderr, "You cannot supply both -i and -o\n");
-		FAIL(3);
+		FAIL(3, cleanup);
 	} else if ( inOpt->count ) {
 		isOut = false;
 	} else if ( outOpt->count ) {
 		isOut = true;
 	} else {
 		fprintf(stderr, "You must supply either -i or -o\n");
-		FAIL(4);
+		FAIL(4, cleanup);
 	}
 
 	bRequest = (uint8)reqOpt->ival[0];
 	wValue = (uint16)valOpt->ival[0];
 	wIndex = (uint16)idxOpt->ival[0];
 	wLength = (uint16)lenOpt->ival[0];
-
 	if ( wLength > BUFFER_SIZE ) {
 		fprintf(stderr, "Cannot %s more than %d bytes\n", isOut?"write":"read", BUFFER_SIZE);
-		FAIL(5);
+		FAIL(5, cleanup);
 	}
 
 	if ( isOut ) {
@@ -110,15 +102,15 @@ int main(int argc, char* argv[]) {
 			FILE *inFile = fopen(fileOpt->filename[0], "rb");
 			if ( inFile == NULL ) {
 				fprintf(stderr, "Cannot open file %s\n", argv[6]);
-				FAIL(6);
+				FAIL(6, cleanup);
 			}
 			bytesRead = fread(buffer, 1, wLength, inFile);
 			fclose(inFile);
 			if ( bytesRead != wLength ) {
 				fprintf(
 					stderr, "Whilst reading from \"%s\", expected 0x%04X bytes but got 0x%04X\n",
-					argv[6], wLength, (unsigned int)bytesRead);
-				FAIL(7);
+					fileOpt->filename[0], wLength, (unsigned int)bytesRead);
+				FAIL(7, cleanup);
 			}
 		} else {
 			// Read OUT data from stdin
@@ -129,7 +121,7 @@ int main(int argc, char* argv[]) {
 			bytesRead = fread(buffer, 1, wLength, stdin);
 			if ( bytesRead != wLength ) {
 				fprintf(stderr, "Unable to read %d bytes from stdin\n", wLength);
-				FAIL(8);
+				FAIL(8, cleanup);
 			}
 		}
 	} else {
@@ -147,22 +139,18 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	uStatus = usbInitialise(0, &error);
-	CHECK(uStatus, 9);
-
-	uStatus = usbOpenDevice(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error);
-	CHECK(uStatus, 10);
+	CHECK_STATUS(usbInitialise(0, &error), 9, cleanup);
+	CHECK_STATUS(usbOpenDevice(vpOpt->sval[0], 1, 0, 0, &deviceHandle, &error), 10, cleanup);
 
 	if ( isOut ) {
-		uStatus = usbControlWrite(
-			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error
-		);
-		CHECK(uStatus, 11);
+		CHECK_STATUS(
+			usbControlWrite(deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error),
+			11, cleanup);
 	} else {
 		size_t bytesWritten;
-		uStatus = usbControlRead(
-			deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error);
-		CHECK(uStatus, 12);
+		CHECK_STATUS(
+			usbControlRead(deviceHandle, bRequest, wValue, wIndex, buffer, wLength, timeout, &error),
+			12, cleanup);
 		bytesWritten = fwrite(buffer, 1, wLength, outFile);
 		if ( bytesWritten != wLength ) {
 			if ( outFile == stdout ) {
@@ -170,7 +158,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				fprintf(stderr, "Unable to write %d bytes to \"%s\"\n", wLength, fileOpt->filename[0]);
 			}
-			FAIL(13);
+			FAIL(13, cleanup);
 		}
 	}
 
@@ -186,5 +174,5 @@ cleanup:
 		usbFreeError(error);
 	}
 	arg_freetable(argTable, sizeof(argTable)/sizeof(argTable[0]));
-	return returnCode;
+	return retVal;
 }
