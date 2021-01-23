@@ -14,12 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <liberror.h>
-#include <libusbwrap.h>
-#include <argtable2.h>
+#include <makestuff/liberror.h>
+#include <makestuff/libusbwrap.h>
+#include <sheitmann/libargtable2.h>
 #ifdef WIN32
-#include <fcntl.h>
-#include <io.h>
+  #include <fcntl.h>
+  #include <io.h>
 #endif
 
 #define BUFFER_SIZE 4096
@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
 
 	if ( arg_nullcheck(argTable) != 0 ) {
 		printf("%s: insufficient memory\n", progName);
-		FAIL(1, cleanup);
+		FAIL_RET(1, cleanup);
 	}
 
 	numErrors = arg_parse(argc, argv, argTable);
@@ -60,13 +60,13 @@ int main(int argc, char* argv[]) {
 		arg_print_syntax(stdout, argTable, "\n");
 		printf("\nInteract with a USB device's control endpoint.\n\n");
 		arg_print_glossary(stdout, argTable,"  %-10s %s\n");
-		FAIL(0, cleanup);
+		FAIL_RET(0, cleanup);
 	}
 
 	if ( numErrors > 0 ) {
 		arg_print_errors(stdout, endOpt, progName);
 		printf("Try '%s --help' for more information.\n", progName);
-		FAIL(2, cleanup);
+		FAIL_RET(2, cleanup);
 	}
 
 	if ( toOpt->count ) {
@@ -75,14 +75,14 @@ int main(int argc, char* argv[]) {
 
 	if ( inOpt->count && outOpt->count ) {
 		fprintf(stderr, "You cannot supply both -i and -o\n");
-		FAIL(3, cleanup);
+		FAIL_RET(3, cleanup);
 	} else if ( inOpt->count ) {
 		isOut = false;
 	} else if ( outOpt->count ) {
 		isOut = true;
 	} else {
 		fprintf(stderr, "You must supply either -i or -o\n");
-		FAIL(4, cleanup);
+		FAIL_RET(4, cleanup);
 	}
 
 	bRequest = (uint8)reqOpt->ival[0];
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
 	wLength = (uint16)lenOpt->ival[0];
 	if ( wLength > BUFFER_SIZE ) {
 		fprintf(stderr, "Cannot %s more than %d bytes\n", isOut?"write":"read", BUFFER_SIZE);
-		FAIL(5, cleanup);
+		FAIL_RET(5, cleanup);
 	}
 
 	if ( isOut ) {
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
 			FILE *inFile = fopen(fileOpt->filename[0], "rb");
 			if ( inFile == NULL ) {
 				fprintf(stderr, "Cannot open file %s\n", argv[6]);
-				FAIL(6, cleanup);
+				FAIL_RET(6, cleanup);
 			}
 			bytesRead = fread(buffer, 1, wLength, inFile);
 			fclose(inFile);
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
 				fprintf(
 					stderr, "Whilst reading from \"%s\", expected 0x%04X bytes but got 0x%04X\n",
 					fileOpt->filename[0], wLength, (unsigned int)bytesRead);
-				FAIL(7, cleanup);
+				FAIL_RET(7, cleanup);
 			}
 		} else {
 			// Read OUT data from stdin
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
 			bytesRead = fread(buffer, 1, wLength, stdin);
 			if ( bytesRead != wLength ) {
 				fprintf(stderr, "Unable to read %d bytes from stdin\n", wLength);
-				FAIL(8, cleanup);
+				FAIL_RET(8, cleanup);
 			}
 		}
 	} else {
@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				fprintf(stderr, "Unable to write %d bytes to \"%s\"\n", wLength, fileOpt->filename[0]);
 			}
-			FAIL(13, cleanup);
+			FAIL_RET(13, cleanup);
 		}
 	}
 
